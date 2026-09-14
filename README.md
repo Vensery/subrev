@@ -36,11 +36,21 @@ forever or silently proceeding.
 
 ## Install
 
+Not published to npm yet — clone and build it locally:
+
 ```bash
-npm install -g subrev
+git clone https://github.com/Vensery/subrev.git
+cd subrev
+npm install
+npm run build
 ```
 
-(Or clone this repo, `npm install && npm run build`, and use `node dist/cli.js`.)
+This produces `dist/cli.js`. Run it directly with `node dist/cli.js <command>`, or link it onto your
+`PATH` so `subrev` works as a bare command:
+
+```bash
+npm link
+```
 
 ## Set up a project
 
