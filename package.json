@@ -1,0 +1,27 @@
+{
+  "name": "subrev",
+  "version": "0.1.0",
+  "description": "A CLI that orchestrates an AI plan -> implement -> review pipeline on top of the Claude and Codex CLIs, with a mechanical gate (your own check/build/test scripts) between every step.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Vensery/subrev.git"
+  },
+  "type": "module",
+  "bin": { "subrev": "./dist/cli.js" },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "postbuild": "chmod +x dist/cli.js",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "gray-matter": "^4.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  }
+}
