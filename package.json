@@ -1,5 +1,5 @@
 {
-  "name": "subrev",
+  "name": "@vensery/subrev",
   "version": "0.1.0",
   "description": "A CLI that orchestrates an AI plan -> implement -> review pipeline on top of the Claude and Codex CLIs, with a mechanical gate (your own check/build/test scripts) between every step.",
   "license": "MIT",
