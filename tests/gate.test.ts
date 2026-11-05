@@ -5,7 +5,7 @@ import type { TaskMeta } from '../src/taskStore.js'
 function meta(taskId: string, retrospectivePending: boolean): TaskMeta {
   return {
     taskId,
-    project: 'acme',
+    project: 'selfmatch',
     repoKey: 'main',
     branch: `task/${taskId}`,
     status: 'abandoned',

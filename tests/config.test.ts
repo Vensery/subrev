@@ -29,9 +29,9 @@ describe('loadProjectsConfig', () => {
 
   it('parses a valid config file', () => {
     const repoPath = mkdtempSync(path.join(os.tmpdir(), 'subrev-repo-'))
-    const configPath = writeConfig({ acme: { repos: { main: repoPath } } })
+    const configPath = writeConfig({ selfmatch: { repos: { main: repoPath } } })
     const config = loadProjectsConfig(configPath)
-    expect(config.acme.repos.main).toBe(repoPath)
+    expect(config.selfmatch.repos.main).toBe(repoPath)
     rmSync(repoPath, { recursive: true, force: true })
   })
 })
@@ -40,14 +40,14 @@ describe('resolveRepoFromCwd', () => {
   it('matches a cwd nested inside a registered repo path', () => {
     const repoPath = mkdtempSync(path.join(os.tmpdir(), 'subrev-repo-'))
     mkdirSync(path.join(repoPath, 'src'))
-    const config: ProjectsConfig = { acme: { repos: { main: repoPath } } }
+    const config: ProjectsConfig = { selfmatch: { repos: { main: repoPath } } }
     const resolved = resolveRepoFromCwd(path.join(repoPath, 'src'), config)
-    expect(resolved).toEqual({ project: 'acme', repoKey: 'main', repoPath })
+    expect(resolved).toEqual({ project: 'selfmatch', repoKey: 'main', repoPath })
     rmSync(repoPath, { recursive: true, force: true })
   })
 
   it('returns null when cwd matches nothing', () => {
-    const config: ProjectsConfig = { acme: { repos: { main: '/some/other/path' } } }
+    const config: ProjectsConfig = { selfmatch: { repos: { main: '/some/other/path' } } }
     expect(resolveRepoFromCwd('/unrelated/dir', config)).toBeNull()
   })
 })
@@ -55,13 +55,13 @@ describe('resolveRepoFromCwd', () => {
 describe('resolveArchiveRepo', () => {
   it('returns the configured archive repo path', () => {
     const config: ProjectsConfig = {
-      acme: { repos: { main: '/x' }, archiveRepo: '/archive' },
+      selfmatch: { repos: { main: '/x' }, archiveRepo: '/archive' },
     }
-    expect(resolveArchiveRepo('acme', config)).toBe('/archive')
+    expect(resolveArchiveRepo('selfmatch', config)).toBe('/archive')
   })
 
   it('throws when no archiveRepo is configured', () => {
-    const config: ProjectsConfig = { acme: { repos: { main: '/x' } } }
-    expect(() => resolveArchiveRepo('acme', config)).toThrow(/No archiveRepo/)
+    const config: ProjectsConfig = { selfmatch: { repos: { main: '/x' } } }
+    expect(() => resolveArchiveRepo('selfmatch', config)).toThrow(/No archiveRepo/)
   })
 })

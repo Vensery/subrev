@@ -13,7 +13,7 @@ afterEach(() => { if (repoPath) rmSync(repoPath, { recursive: true, force: true 
 function seedTask(): TaskMeta {
   repoPath = mkdtempSync(path.join(os.tmpdir(), 'subrev-plan-'))
   const meta: TaskMeta = {
-    taskId: 't1', project: 'acme', repoKey: 'main', branch: 'task/t1',
+    taskId: 't1', project: 'selfmatch', repoKey: 'main', branch: 'task/t1',
     status: 'planning', round: 0, planVersion: 0, retrospectivePending: false,
     createdAt: '2026-07-08T00:00:00.000Z',
   }
@@ -25,7 +25,7 @@ describe('buildPlanPrompt', () => {
   it('requires a Files section and a numbered acceptance criteria section', () => {
     const prompt = buildPlanPrompt('do the thing')
     expect(prompt).toContain('## Files')
-    expect(prompt).toContain('NUMBERED list')
+    expect(prompt).toContain('AC-1')
     expect(prompt).toContain('do the thing')
   })
 })

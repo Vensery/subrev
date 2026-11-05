@@ -21,7 +21,7 @@ function seedTask(status: TaskMeta['status'] = 'awaiting-judgment'): TaskMeta {
   archiveRepo = createTempGitRepo()
   const base = currentCommit(repo.repoPath)
   const meta: TaskMeta = {
-    taskId: 't1', project: 'acme', repoKey: 'main', branch: 'task/t1',
+    taskId: 't1', project: 'selfmatch', repoKey: 'main', branch: 'task/t1',
     status, round: 1, planVersion: 1, retrospectivePending: false,
     createdAt: '2026-07-08T00:00:00.000Z', baseBranch: base, unparseableReviewCount: 0,
   }
@@ -33,7 +33,7 @@ function seedTask(status: TaskMeta['status'] = 'awaiting-judgment'): TaskMeta {
   const configDir = mkdtempSync(path.join(os.tmpdir(), 'subrev-close-config-'))
   configPath = path.join(configDir, 'projects.json')
   writeFileSync(configPath, JSON.stringify({
-    acme: { repos: { main: repo.repoPath }, archiveRepo: archiveRepo.repoPath },
+    selfmatch: { repos: { main: repo.repoPath }, archiveRepo: archiveRepo.repoPath },
   }))
   return meta
 }

@@ -6,11 +6,17 @@ import type { AiRunner } from '../aiRunner.js'
 import { readTaskFile, writeTaskFile, readTaskMeta, writeTaskMeta, taskDir } from '../taskStore.js'
 import { runAllScripts, allGreen, formatTestLog, type ScriptResult } from '../scripts.js'
 import { currentCommit, isWorkingTreeDirty, commitAllChanges } from '../git.js'
+import { checkGateIntegrity, renderGateReport } from '../integrity/gateIntegrity.js'
+import { isGateChangeApproved } from '../integrity/gateApproval.js'
+import { extractPlanFiles } from './planFiles.js'
+import { execFileSync } from 'node:child_process'
 
 export interface ImplementResult {
   scripts: ScriptResult[]
   deviationRequested: boolean
   mechanicalAttempts: number
+  /** The working tree changed the gate (scripts, test config, package.json test fields) without an approval for that exact change. */
+  gateBlocked?: boolean
 }
 
 export interface ImplementOptions {
@@ -42,6 +48,20 @@ function buildImplementPrompt(planApproved: string, taskId: string, isFix: boole
   return lines.join('\n')
 }
 
+/** The task's base commit: where the task branch left its base branch. */
+function gateBase(repoPath: string, taskId: string): string {
+  const base = readTaskMeta(repoPath, taskId).baseBranch
+  if (!base) {
+    // Without a base there is nothing trustworthy to compare the gate with: fail closed.
+    throw new Error(`Task ${taskId} has no baseBranch; cannot verify the gate definition.`)
+  }
+  try {
+    return execFileSync('git', ['merge-base', base, 'HEAD'], { cwd: repoPath, encoding: 'utf8' }).trim()
+  } catch {
+    return base
+  }
+}
+
 export async function implementAndGate(
   ai: AiRunner,
   repoPath: string,
@@ -68,6 +88,9 @@ export async function implementAndGate(
     const commitBeforeAttempt = currentCommit(repoPath)
     const transcriptStamp = `${Date.now()}-${++transcriptSequence}-${randomBytes(8).toString('hex')}`
 
+    // Outside the try below on purpose: a failing gate check must escalate, not be retried as a codex crash.
+    let codexRan = false
+    let gateNote = ''
     try {
       const codexOutput = await ai.codexExec(prompt, repoPath)
       // Persist codex's transcript per attempt — when an attempt produces nothing
@@ -86,7 +109,7 @@ export async function implementAndGate(
         return { scripts, deviationRequested: true, mechanicalAttempts: attempts }
       }
 
-      scripts = runAllScripts(repoPath)
+      codexRan = true
     } catch (error) {
       // codexExec itself failed (subprocess crashed/errored after its own internal
       // retry). Treat this exactly like a red script run: it consumes one mechanical
@@ -96,7 +119,26 @@ export async function implementAndGate(
       scripts = [{ name: 'codex exec', passed: false, output: message }]
     }
 
-    writeTaskFile(repoPath, taskId, 'test-log.md', formatTestLog(scripts))
+    if (codexRan) {
+      // A green gate only means something if the implementer did not change the gate. Checked
+      // on the working tree, before the scripts run and before anything is committed.
+      const gateCheck = checkGateIntegrity(repoPath, gateBase(repoPath, taskId))
+      if (gateCheck.fingerprint && !isGateChangeApproved(repoPath, taskId, gateCheck.fingerprint)) {
+        const planFiles = extractPlanFiles(readTaskFile(repoPath, taskId, 'plan-approved.md') ?? '')
+        writeTaskFile(repoPath, taskId, 'gate-change-report.md', renderGateReport(taskId, gateCheck, planFiles))
+        const meta = readTaskMeta(repoPath, taskId)
+        meta.status = 'escalated-gate-change'
+        meta.gateChangeFingerprint = gateCheck.fingerprint
+        writeTaskMeta(repoPath, meta)
+        return { scripts, deviationRequested: false, mechanicalAttempts: attempts, gateBlocked: true }
+      }
+      if (gateCheck.fingerprint) {
+        gateNote = `> Gate differs from base (${gateCheck.changes.map((c) => c.path).join(', ')}); running it under human approval ${gateCheck.fingerprint}.\n\n`
+      }
+      scripts = runAllScripts(repoPath)
+    }
+
+    writeTaskFile(repoPath, taskId, 'test-log.md', gateNote + formatTestLog(scripts))
     if (allGreen(scripts)) {
       // codex's sandbox mounts .git read-only, so it physically cannot commit —
       // the orchestrator owns the git state transition (as it does for branches,

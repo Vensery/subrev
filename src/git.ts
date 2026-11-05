@@ -84,3 +84,20 @@ export function writeDiffSnapshot(
   writeFileSync(outPath, patch, 'utf8')
   return outPath
 }
+
+/**
+ * Check out `commit` into `dir` as a detached worktree. Untracked and gitignored
+ * paths (notably `.ai/`, where the implementer's self-reports live) do not exist
+ * there, which is what lets the independent review phase run without them.
+ */
+export function addDetachedWorktree(repoPath: string, dir: string, commit: string): void {
+  git(repoPath, ['worktree', 'add', '--detach', dir, commit])
+}
+
+export function removeWorktree(repoPath: string, dir: string): void {
+  git(repoPath, ['worktree', 'remove', '--force', dir])
+}
+
+export function pruneWorktrees(repoPath: string): void {
+  git(repoPath, ['worktree', 'prune'])
+}

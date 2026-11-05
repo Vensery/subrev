@@ -11,7 +11,7 @@ afterEach(() => { if (repoPath) rmSync(repoPath, { recursive: true, force: true 
 
 function seed(overrides: Partial<TaskMeta>): void {
   const meta: TaskMeta = {
-    taskId: overrides.taskId ?? 'x', project: 'acme', repoKey: 'main', branch: 'task/x',
+    taskId: overrides.taskId ?? 'x', project: 'selfmatch', repoKey: 'main', branch: 'task/x',
     status: 'in-progress', round: 0, planVersion: 1, retrospectivePending: false,
     createdAt: '2026-07-08T00:00:00.000Z', ...overrides,
   }
@@ -41,6 +41,15 @@ describe('formatStatusReport', () => {
     const text = formatStatusReport(buildStatusReport(repoPath))
     expect(text).toContain('need a retrospective')
     expect(text).toContain('gone')
+  })
+
+  it('flags a blocked task whose report audit did not come back clean', () => {
+    repoPath = mkdtempSync(path.join(os.tmpdir(), 'subrev-status-'))
+    seed({ taskId: 'flagged', status: 'awaiting-judgment', auditResult: 'contradiction' })
+    seed({ taskId: 'clean', status: 'awaiting-judgment', auditResult: 'consistent' })
+    const text = formatStatusReport(buildStatusReport(repoPath))
+    expect(text).toContain('flagged [awaiting-judgment] ⚠ report audit: contradiction')
+    expect(text).toMatch(/clean \[awaiting-judgment\]$/m)
   })
 
   it('omits the warning when nothing is pending', () => {

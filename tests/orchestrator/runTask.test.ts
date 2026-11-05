@@ -3,7 +3,7 @@ import { writeFileSync, appendFileSync } from 'node:fs'
 import path from 'node:path'
 import { runTask, type RunOptions } from '../../src/orchestrator/runTask.js'
 import { scaffoldTask, readTaskMeta, readTaskFile, writeTaskFile, type TaskMeta } from '../../src/taskStore.js'
-import { createTempGitRepo, commitAll, writeExecutableScript, type TempRepo } from '../helpers/tempGitRepo.js'
+import { createTempGitRepo, commitAll, installControllableGate, setGate, type TempRepo } from '../helpers/tempGitRepo.js'
 import { currentCommit, createTaskBranch } from '../../src/git.js'
 import { FakeAiRunner } from '../../src/testing/fakeAiRunner.js'
 
@@ -15,9 +15,10 @@ const OPTS: RunOptions = { maxMechanicalRetries: 2, maxVerdictRetries: 1, maxRev
 
 function seed(planFilesSection: string): { meta: TaskMeta; base: string } {
   repo = createTempGitRepo()
+  installControllableGate(repo.repoPath)
   const base = currentCommit(repo.repoPath)
   const meta: TaskMeta = {
-    taskId: 't1', project: 'acme', repoKey: 'main', branch: 'task/t1',
+    taskId: 't1', project: 'selfmatch', repoKey: 'main', branch: 'task/t1',
     status: 'in-progress', round: 0, planVersion: 1, retrospectivePending: false,
     createdAt: '2026-07-08T00:00:00.000Z', baseBranch: base,
     unparseableReviewCount: 0,
@@ -29,7 +30,7 @@ function seed(planFilesSection: string): { meta: TaskMeta; base: string } {
 }
 
 function green(): void {
-  for (const name of ['check.sh', 'build.sh', 'test.sh']) writeExecutableScript(repo.repoPath, name, 'exit 0')
+  setGate(repo.repoPath, true)
 }
 
 describe('runTask', () => {
@@ -64,7 +65,7 @@ describe('runTask', () => {
     )
     ai.reviewResponses.push('VERDICT: FAIL')
 
-    const status = await runTask(ai, repo.repoPath, meta.taskId, { ...OPTS, baseBranch: base })
+    const status = await runTask(ai, repo.repoPath, meta.taskId, { ...OPTS, baseBranch: base, fixReview: 'scope-only' })
     expect(status).toBe('awaiting-judgment')
     expect(readTaskMeta(repo.repoPath, meta.taskId).round).toBe(1)
     expect(readTaskFile(repo.repoPath, meta.taskId, 'review-2.md')).toBeNull()
@@ -86,7 +87,7 @@ describe('runTask', () => {
     )
     ai.reviewResponses.push('VERDICT: FAIL')
 
-    const status = await runTask(ai, repo.repoPath, meta.taskId, { ...OPTS, baseBranch: base })
+    const status = await runTask(ai, repo.repoPath, meta.taskId, { ...OPTS, baseBranch: base, fixReview: 'scope-only' })
     expect(status).toBe('awaiting-judgment')
     expect(readTaskFile(repo.repoPath, meta.taskId, 'review-2.md')).toBeNull()
   })
@@ -150,7 +151,7 @@ describe('runTask', () => {
     )
     ai.reviewResponses.push('VERDICT: FAIL')
 
-    const status = await runTask(ai, repo.repoPath, meta.taskId, { ...OPTS, baseBranch: base })
+    const status = await runTask(ai, repo.repoPath, meta.taskId, { ...OPTS, baseBranch: base, fixReview: 'scope-only' })
     expect(status).toBe('awaiting-judgment')
     expect(readTaskFile(repo.repoPath, meta.taskId, 'review-2.md')).toBeNull()
   })

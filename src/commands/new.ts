@@ -33,7 +33,7 @@ export function newTask(options: NewTaskOptions): TaskMeta {
     baseBranch: currentBranch(resolved.repoPath),
     unparseableReviewCount: 0,
   }
-  const brief = `# Brief\n\n${options.description}\n\n## Files\n\n- TODO\n\n## Acceptance criteria\n\n1. TODO: replace with real numbered items\n`
+  const brief = `# Brief\n\n${options.description}\n\n## Files\n\n- TODO\n\n## Acceptance criteria\n\n- AC-1: TODO: replace with real, independently checkable items (AC-2, AC-3, ...)\n`
   scaffoldTask(resolved.repoPath, meta, brief)
   return meta
 }

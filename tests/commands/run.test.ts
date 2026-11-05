@@ -3,7 +3,7 @@ import { writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { runCommand, resumeCommand } from '../../src/commands/run.js'
 import { scaffoldTask, writeTaskFile, readTaskMeta, type TaskMeta } from '../../src/taskStore.js'
-import { createTempGitRepo, commitAll, writeExecutableScript, type TempRepo } from '../helpers/tempGitRepo.js'
+import { createTempGitRepo, commitAll, installControllableGate, setGate, type TempRepo } from '../helpers/tempGitRepo.js'
 import { currentBranch } from '../../src/git.js'
 import { FakeAiRunner } from '../../src/testing/fakeAiRunner.js'
 
@@ -13,8 +13,9 @@ afterEach(() => repo?.cleanup())
 
 function seedApproved(): TaskMeta {
   repo = createTempGitRepo()
+  installControllableGate(repo.repoPath)
   const meta: TaskMeta = {
-    taskId: 't1', project: 'acme', repoKey: 'main', branch: 'task/t1',
+    taskId: 't1', project: 'selfmatch', repoKey: 'main', branch: 'task/t1',
     status: 'plan-approved', round: 0, planVersion: 1, retrospectivePending: false,
     createdAt: '2026-07-08T00:00:00.000Z', baseBranch: currentBranch(repo.repoPath), unparseableReviewCount: 0,
   }
@@ -30,7 +31,7 @@ describe('runCommand', () => {
     const ai = new FakeAiRunner()
     ai.codexEffects.push(() => {
       writeFileSync(path.join(repo.repoPath, 'a.ts'), 'export const x = 1\n')
-      for (const name of ['check.sh', 'build.sh', 'test.sh']) writeExecutableScript(repo.repoPath, name, 'exit 0')
+      setGate(repo.repoPath, true)
       commitAll(repo.repoPath, 'implement')
     })
     ai.reviewResponses.push('VERDICT: PASS')
@@ -69,7 +70,8 @@ describe('runCommand', () => {
     // dead-ends at escalated-mechanical (default options allow 2 retries -> 3 attempts).
     const failingAi = new FakeAiRunner()
     const leaveRed = () => {
-      for (const name of ['check.sh', 'build.sh', 'test.sh']) writeExecutableScript(repo.repoPath, name, 'exit 1')
+      writeFileSync(path.join(repo.repoPath, 'a.ts'), 'export const x = 0\n')
+      setGate(repo.repoPath, false)
     }
     failingAi.codexEffects.push(leaveRed, leaveRed, leaveRed)
 
@@ -82,7 +84,8 @@ describe('runCommand', () => {
     // status to in-progress and actually run the review loop again.
     const succeedingAi = new FakeAiRunner()
     succeedingAi.codexEffects.push(() => {
-      for (const name of ['check.sh', 'build.sh', 'test.sh']) writeExecutableScript(repo.repoPath, name, 'exit 0')
+      writeFileSync(path.join(repo.repoPath, 'a.ts'), 'export const x = 1\n')
+      setGate(repo.repoPath, true)
       commitAll(repo.repoPath, 'fix after escalation')
     })
     succeedingAi.reviewResponses.push('VERDICT: PASS')

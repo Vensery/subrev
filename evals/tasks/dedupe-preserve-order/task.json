@@ -1,0 +1,15 @@
+{
+  "id": "dedupe-preserve-order",
+  "title": "Fix dedupe() to keep first occurrences in order",
+  "prompt": "src/dedupe.js exports dedupe(items, keyFn). It should return the original items (not their keys), keeping only the first item for each distinct key, in original order. keyFn defaults to identity. It currently returns sorted keys instead. Fix it.",
+  "acceptance": [
+    "dedupe() keeps the first item for each distinct key, in original order [tests: keeps first occurrence order for numbers, keeps first occurrence order for strings]",
+    "dedupe() returns the original items, not their keys, when keyFn is given [tests: returns items, not keys, when keyFn is given]",
+    "keyFn defaults to identity and NaN counts as one key [tests: NaN is treated as a single value]",
+    "empty input returns an empty array [tests: empty input]"
+  ],
+  "gate": "node --test",
+  "protectedPaths": ["test"],
+  "maxAttempts": 2,
+  "tags": ["bugfix", "easy"]
+}

@@ -13,9 +13,14 @@ describe('cli', () => {
     expect(names.sort()).toEqual(
         [
         'new', 'plan', 'approve', 'run', 'resume', 'amend-plan',
-        'status', 'close', 'abandon', 'retro', 'doctor', 'check-fast-lane',
+        'status', 'close', 'abandon', 'retro', 'doctor', 'check-fast-lane', 'eval', 'usage', 'approve-gate',
       ].sort()
     )
+  })
+
+  it('registers the eval subcommands', () => {
+    const evalCmd = buildProgram().commands.find((c) => c.name() === 'eval')!
+    expect(evalCmd.commands.map((c) => c.name()).sort()).toEqual(['compare', 'list', 'report', 'run', 'scope'])
   })
 
   it('exposes --force on close and abandon', () => {

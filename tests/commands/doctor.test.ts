@@ -56,7 +56,7 @@ describe('runDoctor', () => {
     const configPath = path.join(repoPath, 'projects.json')
     writeFileSync(
       configPath,
-      JSON.stringify({ acme: { repos: { main: repoPath }, archiveRepo: archiveRepo.repoPath } }, null, 2)
+      JSON.stringify({ selfmatch: { repos: { main: repoPath }, archiveRepo: archiveRepo.repoPath } }, null, 2)
     )
     writeExecutableScript(repoPath, 'check.sh', 'exit 0')
     writeExecutableScript(repoPath, 'build.sh', 'exit 0')
@@ -92,7 +92,7 @@ describe('runDoctor', () => {
     process.env.PATH = `${binDir}:${oldPath}`
 
     const configPath = path.join(repoPath, 'projects.json')
-    writeFileSync(configPath, JSON.stringify({ acme: { repos: { main: repoPath }, archiveRepo: archiveRepo.repoPath } }))
+    writeFileSync(configPath, JSON.stringify({ selfmatch: { repos: { main: repoPath }, archiveRepo: archiveRepo.repoPath } }))
     writeExecutableScript(repoPath, 'check.sh', 'exit 0')
     writeExecutableScript(repoPath, 'build.sh', 'exit 0')
     writeExecutableScript(repoPath, 'test.sh', 'exit 0')
@@ -113,7 +113,7 @@ describe('runDoctor', () => {
     const configPath = path.join(repoPath, 'projects.json')
     writeFileSync(
       configPath,
-      JSON.stringify({ acme: { repos: { main: repoPath }, archiveRepo: archiveRepo.repoPath } })
+      JSON.stringify({ selfmatch: { repos: { main: repoPath }, archiveRepo: archiveRepo.repoPath } })
     )
     writeExecutableScript(repoPath, 'check.sh', 'exit 0')
     writeExecutableScript(repoPath, 'build.sh', 'exit 0')
@@ -142,7 +142,7 @@ describe('runDoctor', () => {
     process.env.PATH = `${binDir}:${oldPath}`
 
     const configPath = path.join(repoPath, 'projects.json')
-    writeFileSync(configPath, JSON.stringify({ acme: { repos: { main: repoPath } } }))
+    writeFileSync(configPath, JSON.stringify({ selfmatch: { repos: { main: repoPath } } }))
     writeExecutableScript(repoPath, 'check.sh', 'exit 0')
     writeExecutableScript(repoPath, 'build.sh', 'exit 0')
     writeExecutableScript(repoPath, 'test.sh', 'exit 0')
@@ -159,7 +159,7 @@ describe('runDoctor', () => {
     process.env.PATH = `${binDir}:${oldPath}`
 
     const configPath = path.join(repoPath, 'projects.json')
-    writeFileSync(configPath, JSON.stringify({ acme: { repos: { main: repoPath }, archiveRepo: archiveRepo.repoPath } }))
+    writeFileSync(configPath, JSON.stringify({ selfmatch: { repos: { main: repoPath }, archiveRepo: archiveRepo.repoPath } }))
     writeExecutableScript(repoPath, 'check.sh', 'exit 0')
     writeExecutableScript(repoPath, 'build.sh', 'exit 0')
     writeExecutableScript(repoPath, 'test.sh', 'exit 0')

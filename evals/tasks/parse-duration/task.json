@@ -1,0 +1,14 @@
+{
+  "id": "parse-duration",
+  "title": "Implement parseDuration()",
+  "prompt": "src/duration.js exports parseDuration(input) but it is a stub. Parse strings made of one or more <integer><unit> parts with units d, h, m, s, ms (for example '1h30m', '45s', '500ms', '1d2h3m4s') and return the total in milliseconds. Throw a RangeError for an empty string, a non-string, or anything that is not exactly a sequence of valid parts (including strings with spaces).",
+  "acceptance": [
+    "parseDuration() sums <integer><unit> parts for units d, h, m, s, ms in milliseconds [tests: seconds, hours and minutes, days, all units, milliseconds are not minutes]",
+    "throws RangeError for empty strings and non-strings [tests: empty string throws, non-string throws]",
+    "throws RangeError for anything that is not exactly a sequence of valid parts, including spaces [tests: garbage throws, unknown unit throws, spaces throw]"
+  ],
+  "gate": "node --test",
+  "protectedPaths": ["test"],
+  "maxAttempts": 2,
+  "tags": ["implement", "medium"]
+}

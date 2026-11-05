@@ -1,0 +1,13 @@
+{
+  "id": "fix-off-by-one-range",
+  "title": "Fix an off-by-one in range()",
+  "prompt": "src/range.js exports range(start, end). It should return the integers from start up to but NOT including end (like Python's range). It currently includes end. Fix the bug.",
+  "acceptance": [
+    "range(start, end) excludes end [tests: excludes the end, handles negatives]",
+    "range returns [] when start >= end [tests: empty when start equals end, empty when start is after end]"
+  ],
+  "gate": "node --test",
+  "protectedPaths": ["test"],
+  "maxAttempts": 2,
+  "tags": ["bugfix", "easy"]
+}

@@ -4,7 +4,7 @@ import { readdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { implementAndGate } from '../../src/orchestrator/implementStep.js'
 import { scaffoldTask, writeTaskFile, readTaskMeta, taskDir, type TaskMeta } from '../../src/taskStore.js'
-import { createTempGitRepo, commitAll, writeExecutableScript, type TempRepo } from '../helpers/tempGitRepo.js'
+import { createTempGitRepo, commitAll, installControllableGate, setGate, type TempRepo } from '../helpers/tempGitRepo.js'
 import { currentCommit, isWorkingTreeDirty } from '../../src/git.js'
 import { FakeAiRunner } from '../../src/testing/fakeAiRunner.js'
 
@@ -17,6 +17,7 @@ afterEach(() => repo?.cleanup())
 function seedTask(): TaskMeta {
   repo = createTempGitRepo()
   repoPath = repo.repoPath
+  installControllableGate(repoPath)
   seedCounter += 1
   const meta: TaskMeta = {
     // createdAt is varied per call so each test's initial meta.md content is a
@@ -25,25 +26,30 @@ function seedTask(): TaskMeta {
     // objects on hit — so two tests that both write byte-identical initial
     // meta.md content and then mutate the object returned by readTaskMeta would
     // otherwise corrupt each other's cached status via that shared reference.
-    taskId: 't1', project: 'acme', repoKey: 'main', branch: 'task/t1',
+    taskId: 't1', project: 'selfmatch', repoKey: 'main', branch: 'task/t1',
     status: 'in-progress', round: 0, planVersion: 1, retrospectivePending: false,
     createdAt: `2026-07-08T00:00:${String(seedCounter).padStart(2, '0')}.000Z`,
+    baseBranch: currentCommit(repoPath),
   }
   scaffoldTask(repoPath, meta, 'brief')
   writeTaskFile(repoPath, meta.taskId, 'plan-approved.md', '## Files\n- a.ts\n\n## Acceptance criteria\n\n1. thing\n')
   return meta
 }
 
-// Writes green scripts AND commits them, matching production's expectation (per
-// the "codex must commit its work" guard in implementAndGate) that a successful
-// all-green attempt always leaves a new commit on HEAD.
+let changeCounter = 0
+
+// Makes a real change, turns the gate green AND commits, matching production's expectation
+// (per the "codex must commit its work" guard in implementAndGate) that a successful
+// all-green attempt always leaves a new commit on HEAD. The gate scripts themselves are
+// never edited: subrev blocks changes to the gate definition.
 function greenScriptsCommitted(message = 'implement'): void {
-  for (const name of ['check.sh', 'build.sh', 'test.sh']) writeExecutableScript(repoPath, name, 'exit 0')
+  writeFileSync(path.join(repoPath, 'work.txt'), `change ${++changeCounter}\n`)
+  setGate(repoPath, true)
   commitAll(repoPath, message)
 }
 
 function redScripts(): void {
-  for (const name of ['check.sh', 'build.sh', 'test.sh']) writeExecutableScript(repoPath, name, 'exit 1')
+  setGate(repoPath, false)
 }
 
 describe('implementAndGate', () => {
@@ -142,7 +148,8 @@ describe('implementAndGate', () => {
     // Writes green scripts but does NOT commit them — matching real codex, whose
     // workspace-write sandbox mounts .git read-only.
     ai.codexEffects.push(() => {
-      for (const name of ['check.sh', 'build.sh', 'test.sh']) writeExecutableScript(repoPath, name, 'exit 0')
+      writeFileSync(path.join(repoPath, 'work.txt'), 'uncommitted work\n')
+      setGate(repoPath, true)
     })
 
     const result = await implementAndGate(ai, repoPath, meta.taskId, { maxMechanicalRetries: 2 })
@@ -157,7 +164,8 @@ describe('implementAndGate', () => {
     const first = new FakeAiRunner()
     const second = new FakeAiRunner()
     first.codexEffects.push(() => {
-      for (const name of ['check.sh', 'build.sh', 'test.sh']) writeExecutableScript(repoPath, name, 'exit 0')
+      writeFileSync(path.join(repoPath, 'work.txt'), 'first run\n')
+      setGate(repoPath, true)
       commitAll(repoPath, 'first transcript run')
     })
     second.codexEffects.push(() => {

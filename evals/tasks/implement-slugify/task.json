@@ -1,0 +1,15 @@
+{
+  "id": "implement-slugify",
+  "title": "Implement slugify()",
+  "prompt": "src/slugify.js exports slugify(text) but it is a stub. Implement it: lowercase, strip diacritics, replace every run of non-alphanumeric characters with a single hyphen, and trim leading/trailing hyphens. Use only the standard library.",
+  "acceptance": [
+    "slugify() lowercases and strips diacritics [tests: strips diacritics, basic]",
+    "every run of non-alphanumeric characters becomes one hyphen [tests: collapses and trims whitespace, symbols become one separator]",
+    "leading and trailing hyphens are trimmed [tests: collapses hyphens and trims them]",
+    "uses only the standard library"
+  ],
+  "gate": "node --test",
+  "protectedPaths": ["test"],
+  "maxAttempts": 2,
+  "tags": ["implement", "easy"]
+}

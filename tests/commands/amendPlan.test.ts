@@ -12,7 +12,7 @@ afterEach(() => { if (repoPath) rmSync(repoPath, { recursive: true, force: true 
 function seedDeviatedTask(): TaskMeta {
   repoPath = mkdtempSync(path.join(os.tmpdir(), 'subrev-amend-'))
   const meta: TaskMeta = {
-    taskId: 't1', project: 'acme', repoKey: 'main', branch: 'task/t1',
+    taskId: 't1', project: 'selfmatch', repoKey: 'main', branch: 'task/t1',
     status: 'escalated-plan-deviation', round: 2, planVersion: 1, retrospectivePending: false,
     createdAt: '2026-07-08T00:00:00.000Z',
   }
@@ -35,7 +35,7 @@ describe('amendPlan', () => {
   it('refuses to amend a task that is not awaiting a deviation decision', () => {
     repoPath = mkdtempSync(path.join(os.tmpdir(), 'subrev-amend-'))
     const meta: TaskMeta = {
-      taskId: 't1', project: 'acme', repoKey: 'main', branch: 'task/t1',
+      taskId: 't1', project: 'selfmatch', repoKey: 'main', branch: 'task/t1',
       status: 'in-progress', round: 0, planVersion: 1, retrospectivePending: false,
       createdAt: '2026-07-08T00:00:00.000Z',
     }

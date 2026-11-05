@@ -88,3 +88,33 @@ describe('checkScopeCreep', () => {
     expect(result.triggered).toBe(true)
   })
 })
+
+describe('checkScopeCreep (AST layer for JS/TS)', () => {
+  it('ignores the word "function" in a comment and an unchanged branch, but names new callables and branches', () => {
+    repo = createTempGitRepo()
+    writeFileSync(path.join(repo.repoPath, 'a.ts'), 'export function f(x: number) {\n  if (x) return 1\n  return 0\n}\n')
+    commitAll(repo.repoPath, 'add a.ts')
+    const base = currentCommit(repo.repoPath)
+
+    writeFileSync(path.join(repo.repoPath, 'a.ts'), 'export function f(x: number) {\n  // this function returns 1 for truthy x\n  if (x) return 1\n  return 0\n}\n')
+    commitAll(repo.repoPath, 'comment only')
+    expect(checkScopeCreep(repo.repoPath, base, ['a.ts']).triggered).toBe(false)
+
+    const mid = currentCommit(repo.repoPath)
+    appendFileSync(path.join(repo.repoPath, 'a.ts'), 'export const g = (y: number) => (y ? 1 : 2)\n')
+    commitAll(repo.repoPath, 'new arrow fn with a ternary')
+    const result = checkScopeCreep(repo.repoPath, mid, ['a.ts'])
+    expect(result.newFunctionOrBranch).toBe(true)
+    expect(result.reasons).toEqual(['a.ts: new callable g', 'a.ts: new branch in g'])
+  })
+
+  it('keeps the keyword regexes for non-JS files', () => {
+    repo = createTempGitRepo()
+    writeFileSync(path.join(repo.repoPath, 'a.py'), 'x = 1\n')
+    commitAll(repo.repoPath, 'add a.py')
+    const base = currentCommit(repo.repoPath)
+    appendFileSync(path.join(repo.repoPath, 'a.py'), 'def helper():\n    return 1\n')
+    commitAll(repo.repoPath, 'python fn')
+    expect(checkScopeCreep(repo.repoPath, base, ['a.py']).newFunctionOrBranch).toBe(true)
+  })
+})

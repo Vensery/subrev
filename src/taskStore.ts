@@ -9,6 +9,7 @@ export type TaskStatus =
   | 'escalated-mechanical'
   | 'escalated-unparseable-review'
   | 'escalated-plan-deviation'
+  | 'escalated-gate-change'
   | 'awaiting-judgment'
   | 'closed'
   | 'abandoned'
@@ -26,7 +27,23 @@ export interface TaskMeta {
   baseBranch?: string
   unparseableReviewCount?: number
   lastReviewedCommit?: string
+  /** Outcome of the latest report-audit phase (phase 2 of review). Informational, not a gate. */
+  auditResult?: AuditResult
+  /** Verdict of the most recent phase-1 review. */
+  lastVerdict?: 'PASS' | 'FAIL'
+  /** Number of review-driven fixes applied so far. */
+  fixCount?: number
+  /** Set when the task stopped after a fix that no review looked at (test-only fix, or layer 2 accepted it). */
+  unreviewedFixRound?: number
+  /** Files changed in the reviewed diff that no implementer report mentions (latest audit). */
+  undisclosedFileCount?: number
+  /** Fingerprint of the gate change that blocked the task (escalated-gate-change). */
+  gateChangeFingerprint?: string
+  /** Number of review windows in which the test-integrity check flagged weakened tests. */
+  testIntegrityFlags?: number
 }
+
+export type AuditResult = 'consistent' | 'contradiction' | 'unparseable' | 'missing-report' | 'error'
 
 export function slugify(text: string): string {
   return text

@@ -22,7 +22,7 @@ afterEach(() => {
 function makeMeta(overrides: Partial<TaskMeta> = {}): TaskMeta {
   return {
     taskId: '2026-07-08-add-foo',
-    project: 'acme',
+    project: 'selfmatch',
     repoKey: 'main',
     branch: 'task/2026-07-08-add-foo',
     status: 'planning',

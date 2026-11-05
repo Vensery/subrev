@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import os from 'node:os'
-import { runProcess, runWithRetry, createSubprocessAiRunner } from '../src/aiRunner.js'
+import { runProcess, runWithRetry, createSubprocessAiRunner, buildReviewArgs } from '../src/aiRunner.js'
 import { FakeAiRunner } from '../src/testing/fakeAiRunner.js'
 
 describe('runProcess', () => {
@@ -44,6 +44,7 @@ describe('createSubprocessAiRunner', () => {
     const runner = createSubprocessAiRunner({ plan: 'default', review: 'default' })
     expect(typeof runner.claudePlan).toBe('function')
     expect(typeof runner.claudeReview).toBe('function')
+    expect(typeof runner.claudeAudit).toBe('function')
     expect(typeof runner.codexExec).toBe('function')
   })
 })
@@ -65,5 +66,17 @@ describe('FakeAiRunner', () => {
   it('throws once its scripted queue is exhausted', async () => {
     const fake = new FakeAiRunner()
     await expect(fake.claudePlan('p', '/cwd')).rejects.toThrow(/no more/)
+  })
+})
+
+describe('buildReviewArgs', () => {
+  it('denies Bash and reading each deny path, with the variadic flag last', () => {
+    const args = buildReviewArgs('PROMPT', 'opus', { denyReadPaths: ['/repo/.ai/'] })
+    expect(args.slice(0, 4)).toEqual(['-p', 'PROMPT', '--model', 'opus'])
+    expect(args.slice(4)).toEqual(['--disallowedTools', 'Bash', 'Read(//repo/.ai/**)'])
+  })
+
+  it('still denies Bash when no deny paths are given', () => {
+    expect(buildReviewArgs('P', 'm')).toEqual(['-p', 'P', '--model', 'm', '--disallowedTools', 'Bash'])
   })
 })

@@ -147,7 +147,7 @@ function nodeVersionCheck(): DoctorCheck {
  * Where THIS subrev installation lives — derived from the compiled module's own
  * location (dist/commands/doctor.js -> ../../ = the tools/subrev root), NOT from
  * the target repo. The dist-freshness question is about the running tool being
- * stale, and the target repo need not contain subrev at all.
+ * stale, and the target repo (e.g. a zymix repo) need not contain subrev at all.
  */
 function defaultToolRoot(): string {
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')

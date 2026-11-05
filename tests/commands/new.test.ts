@@ -18,7 +18,7 @@ function setupConfig(): void {
   repo = createTempGitRepo()
   const configDir = mkdtempSync(path.join(os.tmpdir(), 'subrev-new-config-'))
   configPath = path.join(configDir, 'projects.json')
-  writeFileSync(configPath, JSON.stringify({ acme: { repos: { main: repo.repoPath } } }))
+  writeFileSync(configPath, JSON.stringify({ selfmatch: { repos: { main: repo.repoPath } } }))
 }
 
 describe('newTask', () => {
@@ -47,7 +47,7 @@ describe('newTask', () => {
     setupConfig()
     const existing: TaskMeta = {
       taskId: 'old-task',
-      project: 'acme',
+      project: 'selfmatch',
       repoKey: 'main',
       branch: 'task/old-task',
       status: 'abandoned',

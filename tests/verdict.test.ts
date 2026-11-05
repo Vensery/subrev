@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseVerdict } from '../src/verdict.js'
+import { parseVerdict, parseConsistency } from '../src/verdict.js'
 
 describe('parseVerdict', () => {
   it('parses PASS on the last line', () => {
@@ -20,5 +20,18 @@ describe('parseVerdict', () => {
 
   it('returns null on wrong wording', () => {
     expect(parseVerdict('Verdict: Passed')).toBeNull()
+  })
+})
+
+describe('parseConsistency', () => {
+  it('parses CONSISTENT and CONTRADICTION on the last line', () => {
+    expect(parseConsistency('notes\nCONSISTENCY: CONSISTENT')).toBe('CONSISTENT')
+    expect(parseConsistency('notes\nCONSISTENCY: CONTRADICTION\n')).toBe('CONTRADICTION')
+  })
+
+  it('returns null when the line is missing, not last, or a VERDICT line', () => {
+    expect(parseConsistency('nothing here')).toBeNull()
+    expect(parseConsistency('CONSISTENCY: CONSISTENT\nmore text')).toBeNull()
+    expect(parseConsistency('VERDICT: PASS')).toBeNull()
   })
 })

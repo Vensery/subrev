@@ -14,6 +14,7 @@ const ABANDON_ALLOWED_STATUSES = new Set([
   'escalated-mechanical',
   'escalated-unparseable-review',
   'escalated-plan-deviation',
+  'escalated-gate-change',
 ] as const)
 
 function archiveTask(repoPath: string, taskId: string, project: string, configPath?: string): void {

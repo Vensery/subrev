@@ -1,0 +1,15 @@
+{
+  "id": "fix-map-limit",
+  "title": "Make mapLimit() respect its concurrency limit",
+  "prompt": "src/mapLimit.js exports async mapLimit(items, limit, fn): it should call fn(item, index) for every item with at most `limit` calls in flight at once, and resolve with the results in the original order. It currently ignores the limit. Reject with a RangeError if limit is not a positive integer, and reject with fn's error if any call fails.",
+  "acceptance": [
+    "mapLimit() never has more than `limit` calls in flight and does use the limit [tests: never exceeds the concurrency limit, limit 1 is sequential]",
+    "results are returned in the original order [tests: preserves result order, empty input resolves]",
+    "rejects with fn's error if any call fails [tests: rejects with the failing call error]",
+    "rejects with RangeError if limit is not a positive integer [tests: rejects an invalid limit]"
+  ],
+  "gate": "node --test",
+  "protectedPaths": ["test"],
+  "maxAttempts": 2,
+  "tags": ["bugfix", "async", "medium"]
+}

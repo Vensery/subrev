@@ -17,7 +17,14 @@ function requireBaseBranch(taskId: string, baseBranch: string | undefined): stri
   return baseBranch
 }
 
-export async function runCommand(ai: AiRunner, repoPath: string, taskId: string): Promise<string> {
+export type RunOverrides = Pick<RunOptions, 'scopeCheck' | 'layer2'>
+
+export async function runCommand(
+  ai: AiRunner,
+  repoPath: string,
+  taskId: string,
+  overrides: RunOverrides = {}
+): Promise<string> {
   const meta = readTaskMeta(repoPath, taskId)
 
   if (meta.status === 'plan-approved') {
@@ -31,7 +38,8 @@ export async function runCommand(ai: AiRunner, repoPath: string, taskId: string)
   } else if (
     meta.status === 'in-progress' ||
     meta.status === 'escalated-mechanical' ||
-    meta.status === 'escalated-unparseable-review'
+    meta.status === 'escalated-unparseable-review' ||
+    meta.status === 'escalated-gate-change'
   ) {
     checkoutBranch(repoPath, meta.branch)
     // Resuming from an escalated status must reset it to 'in-progress' before
@@ -46,7 +54,7 @@ export async function runCommand(ai: AiRunner, repoPath: string, taskId: string)
   }
 
   const refreshed = readTaskMeta(repoPath, taskId)
-  const options: RunOptions = { ...DEFAULT_OPTIONS, baseBranch: requireBaseBranch(taskId, refreshed.baseBranch) }
+  const options: RunOptions = { ...DEFAULT_OPTIONS, ...overrides, baseBranch: requireBaseBranch(taskId, refreshed.baseBranch) }
   return runTask(ai, repoPath, taskId, options)
 }
 
