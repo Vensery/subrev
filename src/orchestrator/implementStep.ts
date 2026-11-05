@@ -5,6 +5,7 @@ import path from 'node:path'
 import type { AiRunner } from '../aiRunner.js'
 import { readTaskFile, writeTaskFile, readTaskMeta, writeTaskMeta, taskDir } from '../taskStore.js'
 import { runAllScripts, allGreen, formatTestLog, type ScriptResult } from '../scripts.js'
+import { resolveGateSandbox } from '../integrity/gateSandbox.js'
 import { currentCommit, isWorkingTreeDirty, commitAllChanges } from '../git.js'
 import { checkGateIntegrity, renderGateReport } from '../integrity/gateIntegrity.js'
 import { extractPlanFiles } from './planFiles.js'
@@ -86,6 +87,8 @@ export async function implementAndGate(
   taskId: string,
   opts: ImplementOptions
 ): Promise<ImplementResult> {
+  // Before codex runs: if the gate cannot be sandboxed, stop here rather than after codex worked.
+  const sandbox = resolveGateSandbox()
   const planApproved = readTaskFile(repoPath, taskId, 'plan-approved.md') ?? ''
   const prompt = buildImplementPrompt(planApproved, taskId, Boolean(opts.isFix), opts.review)
   const deviationPath = path.join(taskDir(repoPath, taskId), 'deviation-request.md')
@@ -148,7 +151,8 @@ export async function implementAndGate(
       if (gateCheck.fingerprint) {
         gateNote = `> Gate differs from base (${gateCheck.changes.map((c) => c.path).join(', ')}); running it under human approval ${gateCheck.fingerprint} given on this run's command line.\n\n`
       }
-      scripts = runAllScripts(repoPath)
+      gateNote += `> ${sandbox.describe(repoPath)}\n\n`
+      scripts = runAllScripts(repoPath, sandbox)
       // The gate runs implementer-written code with full user rights; it must not leave the gate
       // different from what was checked (or approved) just before it ran.
       const afterGate = checkGateIntegrity(repoPath, base)

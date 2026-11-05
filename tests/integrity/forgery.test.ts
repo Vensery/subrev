@@ -73,7 +73,8 @@ it('an approval forged by code the gate runs does not unblock a neutered gate', 
   expect(readTaskMeta(r, 't1').status).toBe('escalated-gate-change')
 })
 
-it('discards a gate run that changed the gate while it ran', async () => {
+it('discards a gate run that changed the gate while it ran (unsandboxed: the post-gate check is the last line)', async () => {
+  process.env.SUBREV_GATE_SANDBOX = 'off'
   const { r } = seedRunnerRepo()
   const head = currentCommit(r)
   const ai = new FakeAiRunner()

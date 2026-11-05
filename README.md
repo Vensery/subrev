@@ -25,9 +25,13 @@ Before every gate run the working tree (committed, uncommitted and untracked fil
 
 `subrev show-gate <taskId>` re-computes the change from git and shows it. To accept it, pass its fingerprint to the run that should use it: `subrev resume <taskId> --approve-gate <fp>`. The fingerprint is checked against the disk before anything runs and held in memory for that run only; any further edit produces a new fingerprint and blocks again. The gate definition is checked again after the gate runs, and a run that changed it is discarded.
 
-Why not store approvals? The gate runs code the implementer wrote (tests, app code, npm scripts) as your user, outside any sandbox, so anything on disk — `.ai/`, `~/.subrev`, git refs — can be rewritten by it. An earlier version stored approvals in `~/.subrev` and was shown to be forgeable this way; `~/.subrev/gate-approvals.log` is now an audit log that subrev never reads.
+Why not store approvals? The gate runs code the implementer wrote (tests, app code, npm scripts) as your user. An earlier version, before the gate was sandboxed, stored approvals in `~/.subrev` and was shown to be forgeable by such code. The [gate sandbox](#gate-sandbox) now blocks that write, but approvals still never come from disk: `~/.subrev/gate-approvals.log` is an audit log that subrev never reads.
 
-> **Known limit.** Because the gate runs unsandboxed, code it executes can still tamper with on-disk state between runs (task state, git refs, subrev's own files if it lives in the same repo). The planned fix is to run the gate itself in a sandbox. Details: `TEST-INTEGRITY.md`.
+### Gate sandbox
+
+The gate runs code the implementer wrote, so every gate run is confined by the OS: Seatbelt (`sandbox-exec`) on macOS, bubblewrap on Linux. It may write the working tree except `.git`, `.ai` and `scripts/`, plus temp dirs, package caches and anything listed in `SUBREV_GATE_WRITABLE`; everything else is read-only. With no working backend the gate is not run (`SUBREV_GATE_SANDBOX=auto`, the default); `SUBREV_GATE_SANDBOX=off` runs it unconfined and every test log says so. `subrev doctor` probes the sandbox for real.
+
+> **Known limits.** Verified on macOS (Seatbelt) and Linux (bubblewrap); network and package caches stay writable. If subrev itself lives inside the repo it gates, the implementer can change subrev's own source and the build can rebuild it, so run subrev from an install outside the repo. Details: `TEST-INTEGRITY.md`.
 
 ### Test integrity
 
@@ -78,7 +82,7 @@ Add `.ai/` to your `.gitignore`, since task bookkeeping is not meant to be commi
 | `subrev close <taskId>` | Merge the task branch and archive it (requires `decision-log.md`) |
 | `subrev abandon <taskId> --reason <reason>` | Abandon a task without merging |
 | `subrev retro <taskId> <note>` | Clear a pending retrospective flag |
-| `subrev doctor` | Check the environment: binaries, stale `dist/`, and that the codex sandbox can write the workspace but not `.git` or `~/.subrev` |
+| `subrev doctor` | Check the environment: binaries, stale `dist/`, that the codex sandbox can write the workspace but not `.git` or `~/.subrev`, and that the gate sandbox works |
 | `subrev check-fast-lane` | Flag large or unlabeled diffs that bypass the task-branch flow |
 | `subrev eval list\|run\|report\|compare\|scope` | Evaluation harness, see below |
 

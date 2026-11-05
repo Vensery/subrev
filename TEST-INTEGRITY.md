@@ -51,13 +51,38 @@ Now:
 - `subrev doctor` probes that `codex sandbox` cannot write `.git` or the state dir.
 - Regression tests: `tests/integrity/forgery.test.ts`.
 
-Still open — say so: the gate itself runs unsandboxed with your rights. Code it executes can rewrite
-anything on disk between runs: `.ai/` task state (including the recorded base branch), git refs, even
-subrev's own `dist/` when subrev lives in the same repo. The in-memory approval closes the forged-approval
-path and the post-gate check catches gate edits, but no on-disk check is fully trustworthy after
-untrusted code has run as you. The real boundary is to run the gate in a sandbox (macOS `sandbox-exec`:
-writes only to the working tree minus `.git`/`.ai`, plus temp and package caches) — next step, needs
-testing on macOS.
+## Gate sandbox (2026-11-05)
+Every gate run (and every revert-experiment gate run) executes inside an OS sandbox:
+- writable: the working tree **except** `.git`, `.ai` and `scripts/`; temp dirs; package caches
+  (`~/.npm`, `~/.cache`, `~/Library/Caches`, pnpm/yarn stores); paths a human lists in
+  `SUBREV_GATE_WRITABLE`. Everything else, including the rest of your home directory and
+  `~/.subrev`, is read-only. Reads, process execution and network are unrestricted.
+- backends: macOS Seatbelt (`/usr/bin/sandbox-exec`, a profile with a single deny rule so rule
+  order cannot matter) and Linux bubblewrap. Scripts still run in place, so `dirname "$0"` works.
+- `SUBREV_GATE_SANDBOX=auto` (default) refuses to run the gate — before codex is even called — if no
+  backend works. `off` runs unconfined and every `test-log.md` says so. A subrev started inside a
+  gate sandbox (its own test suite run by an outer gate) does not nest; the outer sandbox confines it.
+- `subrev doctor` runs a real probe: a write inside the tree must succeed, writes to `.git`, `.ai`,
+  `scripts/` and `~/.subrev` must fail.
+- Verified on Linux (bubblewrap): the whole suite passes with every gate run confined, and a gate
+  "test" that tries to rewrite `scripts/test.sh`, create a git ref and edit `.ai/` meta is denied all
+  three.
+- macOS: `subrev doctor`'s real probe passed on the first try, but the sandbox tests failed for repos
+  under the temp dir: the first profile only carved `.git`/`.ai`/`scripts/` out of the repo rule, so
+  the temp-dir allowance re-allowed them when the repo lived in `/private/var/folders` (as in tests
+  and eval sandboxes). Fixed: protected dirs are now denied on their own inside the single deny rule.
+- Verified on macOS (codex-cli 0.144.0, Node 25): `subrev doctor` passes all checks including the gate
+  sandbox probe, and the whole suite passes with `SUBREV_GATE_SANDBOX=auto` (every gate run under Seatbelt).
+
+Still open — say so:
+- subrev living inside the repo it gates. SelfMatch's `build.sh` rebuilds `tools/subrev/dist`, and a
+  task may legitimately edit `tools/subrev/src`, so the implementer can change the next subrev run.
+  No sandbox fixes that; run subrev from an install outside the repo (e.g. a pinned global install).
+- Writes the sandbox allows: anything else in the working tree (app code, configs — caught by the
+  post-gate check if gate-relevant), temp dirs and package caches (a poisoned npm cache could affect a
+  later install). Network is open.
+- Hard links: a link created in the tree to a file in a protected location may let writes through on
+  some filesystems; not tested.
 
 ## Known limits (say this in interviews)
 - Static rules miss weakening they have no rule for: a tautology through a helper

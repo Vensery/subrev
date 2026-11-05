@@ -4,6 +4,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadProjectsConfig, resolveRepoFromCwd } from '../config.js'
 import { gateStateDir } from '../integrity/gateApproval.js'
+import { probeGateSandbox } from '../integrity/gateSandbox.js'
 
 export interface DoctorCheck {
   name: string
@@ -114,6 +115,14 @@ function codexSandboxConfinementProbe(repoPath: string): DoctorCheck {
   return escaped.length
     ? { name, ok: false, detail: `codex sandbox could write outside the workspace: ${escaped.join(', ')}` }
     : { name, ok: true, detail: `writes to .git and ${stateDir} were denied` }
+}
+
+/** The gate runs implementer-written code; it must run confined (integrity/gateSandbox.ts). */
+function gateSandboxCheck(repoPath: string): DoctorCheck {
+  const stateDir = gateStateDir()
+  mkdirSync(stateDir, { recursive: true })
+  const { ok, detail } = probeGateSandbox(repoPath, stateDir)
+  return { name: 'gate sandbox', ok, detail }
 }
 
 function gitWritableCheck(repoPath: string): DoctorCheck {
@@ -249,6 +258,7 @@ export function runDoctor(cwd: string, configPath?: string, opts?: { toolRoot?: 
   checks.push(distFreshnessCheck(opts?.toolRoot ?? defaultToolRoot()))
   checks.push(codexWorkspaceWriteProbe(repoPath))
   checks.push(codexSandboxConfinementProbe(repoPath))
+  checks.push(gateSandboxCheck(repoPath))
 
   return { checks, ok: checks.every((check) => check.ok) }
 }

@@ -11,9 +11,16 @@ const cleanups: Array<() => void> = []
 const oldStateDir = process.env.SUBREV_STATE_DIR
 
 beforeEach(() => {
-  const stateDir = mkdtempSync(path.join(os.tmpdir(), 'subrev-doctor-state-'))
+  // Outside temp on purpose: the gate-sandbox probe checks that this directory is NOT writable.
+  const stateDir = mkdtempSync(path.join(process.cwd(), '.subrev-doctor-state-'))
   process.env.SUBREV_STATE_DIR = stateDir
-  cleanups.push(() => rmSync(stateDir, { recursive: true, force: true }))
+  const oldSandbox = process.env.SUBREV_GATE_SANDBOX
+  process.env.SUBREV_GATE_SANDBOX = 'auto' // doctor probes the real gate sandbox
+  cleanups.push(() => {
+    rmSync(stateDir, { recursive: true, force: true })
+    if (oldSandbox === undefined) delete process.env.SUBREV_GATE_SANDBOX
+    else process.env.SUBREV_GATE_SANDBOX = oldSandbox
+  })
 })
 
 afterEach(() => {
@@ -38,8 +45,10 @@ function codexShim(): string {
   return [
     'if [[ "$1" == "--version" ]]; then echo "codex 1.2.3"; exit 0; fi',
     'if [[ "$1" == "exec" && "$2" == "--help" ]]; then echo "workspace-write"; exit 0; fi',
-    // Emulates workspace-write: writable inside cwd, except .git; denied everywhere else.
-    'if [[ "$1" == "sandbox" && "$2" == "-c" ]]; then t="${@: -1}"; case "$t" in "$PWD"/.git/*) echo "Operation not permitted" >&2; exit 1;; "$PWD"/*) touch "$t"; exit 0;; *) echo "Operation not permitted" >&2; exit 1;; esac; fi',
+    // Emulates workspace-write: writable inside cwd, except .git; denied everywhere else. Compares
+    // physical paths: on macOS the temp dir is /var/folders -> /private/var/folders, and $PWD of a
+    // spawned bash is the physical path while the probe target is passed with the symlinked one.
+    'if [[ "$1" == "sandbox" && "$2" == "-c" ]]; then t="${@: -1}"; d="$(cd "$(dirname "$t")" 2>/dev/null && pwd -P)/"; here="$(pwd -P)/"; case "$d" in "$here".git/*) echo "Operation not permitted" >&2; exit 1;; "$here"*) touch "$t"; exit 0;; *) echo "Operation not permitted" >&2; exit 1;; esac; fi',
     'exit 0',
   ].join('\n')
 }
@@ -74,7 +83,8 @@ describe('runDoctor', () => {
     writeExecutableScript(repoPath, 'test.sh', 'exit 0')
 
     const report = runDoctor(repoPath, configPath, { toolRoot: path.join(repoPath, 'tools', 'subrev') })
-    expect(report.checks).toHaveLength(11)
+    expect(report.checks).toHaveLength(12)
+    expect(report.checks.filter((check) => !check.ok)).toEqual([]) // shows which check failed
     expect(report.ok).toBe(true)
     expect(report.checks.map((check) => check.name)).toEqual([
       'codex binary',
@@ -88,6 +98,7 @@ describe('runDoctor', () => {
       'dist freshness',
       'codex workspace-write probe',
       'codex sandbox confines writes',
+      'gate sandbox',
     ])
     expect(report.checks.find((check) => check.name === 'codex binary')?.detail).toContain('codex 1.2.3')
     expect(report.checks.find((check) => check.name === 'claude binary')?.detail).toContain('claude 9.9.9')
@@ -138,6 +149,7 @@ describe('runDoctor', () => {
     const fromSubdir = runDoctor(subdir, configPath, { toolRoot: path.join(repoPath, 'tools', 'subrev') })
     const fromRoot = runDoctor(repoPath, configPath, { toolRoot: path.join(repoPath, 'tools', 'subrev') })
 
+    expect(fromSubdir.checks.filter((check) => !check.ok)).toEqual([]) // shows which check failed
     expect(fromSubdir.ok).toBe(true)
     for (const name of ['registered project', '.git writable', 'scripts are executable', 'dist freshness']) {
       expect(fromSubdir.checks.find((check) => check.name === name)?.ok).toBe(
