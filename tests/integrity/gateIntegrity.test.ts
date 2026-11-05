@@ -3,7 +3,7 @@ import { writeFileSync, mkdirSync, rmSync, mkdtempSync, existsSync, readFileSync
 import os from 'node:os'
 import path from 'node:path'
 import { checkGateIntegrity } from '../../src/integrity/gateIntegrity.js'
-import { approveGate } from '../../src/commands/approveGate.js'
+import { showGate, confirmGateApproval } from '../../src/commands/approveGate.js'
 import { implementAndGate } from '../../src/orchestrator/implementStep.js'
 import { scaffoldTask, writeTaskFile, readTaskMeta, readTaskFile, type TaskMeta } from '../../src/taskStore.js'
 import { createTempGitRepo, commitAll, installControllableGate, setGate, writeExecutableScript, type TempRepo } from '../helpers/tempGitRepo.js'
@@ -124,43 +124,42 @@ describe('implementAndGate with a changed gate', () => {
     const report = readTaskFile(repo.repoPath, meta.taskId, 'gate-change-report.md')!
     expect(report).toContain(`Fingerprint: \`${m.gateChangeFingerprint}\``)
     expect(report).toContain('| scripts/test.sh | gate-script | modified | yes |')
-    expect(report).toContain('Being listed in the plan does not approve a gate change')
+    expect(report).toContain('plan does not approve a gate change')
+    expect(report).toContain(`subrev resume t1 --approve-gate ${m.gateChangeFingerprint}`)
   })
 
-  it('runs the gate only after a human approves that exact change, and blocks again if it changes', async () => {
+  it('runs the gate only with an approval given to that run, never from anything on disk', async () => {
     const meta = seed()
     const ai = new FakeAiRunner()
     ai.codexEffects.push(neuterGate)
     await implementAndGate(ai, repo.repoPath, meta.taskId, { maxMechanicalRetries: 2 })
     const fp = readTaskMeta(repo.repoPath, meta.taskId).gateChangeFingerprint!
 
-    // Showing the change does not approve it; a wrong fingerprint is refused.
-    expect(approveGate(repo.repoPath, meta.taskId).recorded).toBe(false)
-    expect(() => approveGate(repo.repoPath, meta.taskId, '0000000000000000')).toThrow(/does not match/)
-    // A forged approval written into the repo's .ai/ does nothing: approvals live outside the workspace.
-    writeTaskFile(repo.repoPath, meta.taskId, 'gate-approvals.json', JSON.stringify({ fingerprint: fp }))
-    const stillBlocked = new FakeAiRunner()
-    stillBlocked.codexEffects.push(() => {})
-    expect((await implementAndGate(stillBlocked, repo.repoPath, meta.taskId, { maxMechanicalRetries: 0 })).gateBlocked).toBe(true)
+    // Showing the change approves nothing; a wrong fingerprint is refused before anything runs.
+    expect(showGate(repo.repoPath, meta.taskId).fingerprint).toBe(fp)
+    expect(() => confirmGateApproval(repo.repoPath, meta.taskId, '0000000000000000')).toThrow(/does not match/)
 
-    const approved = approveGate(repo.repoPath, meta.taskId, fp)
-    expect(approved.recorded).toBe(true)
-    expect(existsSync(path.join(stateDir, 'gate-approvals.json'))).toBe(true)
+    // Confirming writes an audit entry, but a later run without the fingerprint is still blocked:
+    // nothing on disk grants an approval.
+    expect(confirmGateApproval(repo.repoPath, meta.taskId, fp)).toBe(fp)
+    expect(readFileSync(path.join(stateDir, 'gate-approvals.log'), 'utf8')).toContain(fp)
     expect(readTaskFile(repo.repoPath, meta.taskId, 'decision-log.md')).toContain(`human approved gate change ${fp}`)
+    const noFlag = new FakeAiRunner()
+    noFlag.codexEffects.push(() => {})
+    expect((await implementAndGate(noFlag, repo.repoPath, meta.taskId, { maxMechanicalRetries: 0 })).gateBlocked).toBe(true)
 
-    const resumed = new FakeAiRunner()
-    resumed.codexEffects.push(() => {})
-    const ok = await implementAndGate(resumed, repo.repoPath, meta.taskId, { maxMechanicalRetries: 0 })
+    // With the approval held by the run, the gate runs: the edited test.sh passes, the untouched check.sh still fails.
+    const approved = new FakeAiRunner()
+    approved.codexEffects.push(() => {})
+    const ok = await implementAndGate(approved, repo.repoPath, meta.taskId, { maxMechanicalRetries: 0, approvedGateFingerprint: fp })
     expect(ok.gateBlocked).toBeFalsy()
-    // The approved gate really ran: the edited test.sh passes, the untouched check.sh still reports the failure.
     expect(ok.scripts.map((s) => [s.name, s.passed])).toEqual([['check.sh', false], ['build.sh', false], ['test.sh', true]])
-    expect(readTaskFile(repo.repoPath, meta.taskId, 'test-log.md')).toContain(`under human approval ${fp}`)
+    expect(readTaskFile(repo.repoPath, meta.taskId, 'test-log.md')).toContain(`under human approval ${fp} given on this run's command line`)
 
-    // Any further edit to the gate is a different change and needs its own approval.
+    // Any further edit to the gate is a different change: the old approval does not cover it.
     const again = new FakeAiRunner()
     again.codexEffects.push(() => { writeExecutableScript(repo.repoPath, 'test.sh', 'true'); write('a.ts', 'export const x = 2\n') })
-    expect((await implementAndGate(again, repo.repoPath, meta.taskId, { maxMechanicalRetries: 0 })).gateBlocked).toBe(true)
-    expect(JSON.parse(readFileSync(path.join(stateDir, 'gate-approvals.json'), 'utf8'))).toBeTruthy()
+    expect((await implementAndGate(again, repo.repoPath, meta.taskId, { maxMechanicalRetries: 0, approvedGateFingerprint: fp })).gateBlocked).toBe(true)
   })
 
   it('fails closed when the task has no base to compare with', async () => {

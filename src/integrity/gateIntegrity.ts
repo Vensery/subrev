@@ -149,24 +149,25 @@ export function checkGateIntegrity(repoPath: string, base: string): GateIntegrit
   return { base, changes, fingerprint }
 }
 
-export function renderGateReport(taskId: string, result: GateIntegrityResult, planFiles: string[]): string {
+export function renderGateReport(taskId: string, result: GateIntegrityResult, planFiles: string[], note?: string): string {
   const lines = [
     `# Gate change blocked — ${taskId}`,
     '',
-    `The gate definition in the working tree differs from base \`${result.base.slice(0, 12)}\`. The gate was NOT run and nothing was committed.`,
+    note ?? `The gate definition in the working tree differs from base \`${result.base.slice(0, 12)}\`. The gate was NOT run and nothing was committed.`,
     '',
+    `Base: \`${result.base}\``,
     `Fingerprint: \`${result.fingerprint}\``,
     '',
-    'To accept exactly these changes after checking them yourself:',
+    'To accept exactly these changes for one run, after checking them yourself:',
     '',
     '```',
-    `subrev approve-gate ${taskId}                      # re-shows the diff from git, not from this file`,
-    `subrev approve-gate ${taskId} --fingerprint ${result.fingerprint}`,
-    `subrev resume ${taskId}`,
+    `subrev show-gate ${taskId}                      # re-shows the diff from git, not from this file`,
+    `subrev resume ${taskId} --approve-gate ${result.fingerprint}`,
     '```',
     '',
-    'Being listed in the plan does not approve a gate change; it is shown below only as context.',
-    'Any further change produces a new fingerprint and blocks again.',
+    'The approval lives only in that resume process; nothing on disk can grant it. Being listed in the',
+    'plan does not approve a gate change (shown below only as context). Any further change produces a',
+    'new fingerprint and blocks again.',
     '',
     '| File | Kind | Status | Listed in plan |',
     '| --- | --- | --- | --- |',

@@ -95,3 +95,36 @@ describe('runCommand', () => {
     expect(readTaskMeta(repo.repoPath, meta.taskId).status).toBe('awaiting-judgment')
   })
 })
+
+describe('runCommand --approve-gate', () => {
+  it('refuses a fingerprint that does not match the disk before running anything, and the approval does not outlive the run', async () => {
+    const { mkdtempSync, rmSync } = await import('node:fs')
+    const os = await import('node:os')
+    const state = mkdtempSync(path.join(os.tmpdir(), 'subrev-state-'))
+    process.env.SUBREV_STATE_DIR = state
+    try {
+      const meta = seedApproved()
+      // First run: codex edits the gate -> blocked.
+      const first = new FakeAiRunner()
+      first.codexEffects.push(() => {
+        writeFileSync(path.join(repo.repoPath, 'a.ts'), 'export const x = 1\n')
+        writeFileSync(path.join(repo.repoPath, 'scripts', 'build.sh'), '#!/usr/bin/env bash\nexit 0\n')
+      })
+      expect(await runCommand(first, repo.repoPath, meta.taskId)).toBe('escalated-gate-change')
+      const fp = readTaskMeta(repo.repoPath, meta.taskId).gateChangeFingerprint!
+
+      // Wrong fingerprint: refused up front, codex never called.
+      const wrong = new FakeAiRunner()
+      await expect(runCommand(wrong, repo.repoPath, meta.taskId, { approveGate: 'ffffffffffffffff' })).rejects.toThrow(/does not match/)
+
+      // Right fingerprint: this run proceeds through gate and review.
+      const approved = new FakeAiRunner()
+      approved.codexEffects.push(() => setGate(repo.repoPath, true))
+      approved.reviewResponses.push('VERDICT: PASS')
+      expect(await runCommand(approved, repo.repoPath, meta.taskId, { approveGate: fp })).toBe('awaiting-judgment')
+    } finally {
+      rmSync(state, { recursive: true, force: true })
+      delete process.env.SUBREV_STATE_DIR
+    }
+  })
+})

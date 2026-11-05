@@ -7,7 +7,6 @@ import { readTaskFile, writeTaskFile, readTaskMeta, writeTaskMeta, taskDir } fro
 import { runAllScripts, allGreen, formatTestLog, type ScriptResult } from '../scripts.js'
 import { currentCommit, isWorkingTreeDirty, commitAllChanges } from '../git.js'
 import { checkGateIntegrity, renderGateReport } from '../integrity/gateIntegrity.js'
-import { isGateChangeApproved } from '../integrity/gateApproval.js'
 import { extractPlanFiles } from './planFiles.js'
 import { execFileSync } from 'node:child_process'
 
@@ -23,6 +22,8 @@ export interface ImplementOptions {
   maxMechanicalRetries: number
   isFix?: boolean
   review?: string
+  /** Gate change the human approved on this run's command line; held in memory, never read from disk. */
+  approvedGateFingerprint?: string
 }
 
 let transcriptSequence = 0
@@ -46,6 +47,23 @@ function buildImplementPrompt(planApproved: string, taskId: string, isFix: boole
   ]
   if (isFix && review) lines.push('', '## Review to address', review)
   return lines.join('\n')
+}
+
+function blockGate(
+  repoPath: string,
+  taskId: string,
+  check: ReturnType<typeof checkGateIntegrity>,
+  scripts: ScriptResult[],
+  attempts: number,
+  note?: string
+): ImplementResult {
+  const planFiles = extractPlanFiles(readTaskFile(repoPath, taskId, 'plan-approved.md') ?? '')
+  writeTaskFile(repoPath, taskId, 'gate-change-report.md', renderGateReport(taskId, check, planFiles, note))
+  const meta = readTaskMeta(repoPath, taskId)
+  meta.status = 'escalated-gate-change'
+  if (check.fingerprint) meta.gateChangeFingerprint = check.fingerprint
+  writeTaskMeta(repoPath, meta)
+  return { scripts, deviationRequested: false, mechanicalAttempts: attempts, gateBlocked: true }
 }
 
 /** The task's base commit: where the task branch left its base branch. */
@@ -122,20 +140,22 @@ export async function implementAndGate(
     if (codexRan) {
       // A green gate only means something if the implementer did not change the gate. Checked
       // on the working tree, before the scripts run and before anything is committed.
-      const gateCheck = checkGateIntegrity(repoPath, gateBase(repoPath, taskId))
-      if (gateCheck.fingerprint && !isGateChangeApproved(repoPath, taskId, gateCheck.fingerprint)) {
-        const planFiles = extractPlanFiles(readTaskFile(repoPath, taskId, 'plan-approved.md') ?? '')
-        writeTaskFile(repoPath, taskId, 'gate-change-report.md', renderGateReport(taskId, gateCheck, planFiles))
-        const meta = readTaskMeta(repoPath, taskId)
-        meta.status = 'escalated-gate-change'
-        meta.gateChangeFingerprint = gateCheck.fingerprint
-        writeTaskMeta(repoPath, meta)
-        return { scripts, deviationRequested: false, mechanicalAttempts: attempts, gateBlocked: true }
+      const base = gateBase(repoPath, taskId)
+      const gateCheck = checkGateIntegrity(repoPath, base)
+      if (gateCheck.fingerprint && gateCheck.fingerprint !== opts.approvedGateFingerprint) {
+        return blockGate(repoPath, taskId, gateCheck, scripts, attempts)
       }
       if (gateCheck.fingerprint) {
-        gateNote = `> Gate differs from base (${gateCheck.changes.map((c) => c.path).join(', ')}); running it under human approval ${gateCheck.fingerprint}.\n\n`
+        gateNote = `> Gate differs from base (${gateCheck.changes.map((c) => c.path).join(', ')}); running it under human approval ${gateCheck.fingerprint} given on this run's command line.\n\n`
       }
       scripts = runAllScripts(repoPath)
+      // The gate runs implementer-written code with full user rights; it must not leave the gate
+      // different from what was checked (or approved) just before it ran.
+      const afterGate = checkGateIntegrity(repoPath, base)
+      if (afterGate.fingerprint !== gateCheck.fingerprint) {
+        return blockGate(repoPath, taskId, afterGate, scripts, attempts,
+          `The gate definition CHANGED WHILE THE GATE WAS RUNNING (before: ${gateCheck.fingerprint ?? 'unchanged from base'}). Its result was discarded and nothing was committed.`)
+      }
     }
 
     writeTaskFile(repoPath, taskId, 'test-log.md', gateNote + formatTestLog(scripts))

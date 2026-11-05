@@ -1,54 +1,27 @@
 // tools/subrev/src/integrity/gateApproval.ts
 //
-// Human approvals of specific gate changes. Stored outside the repository on purpose: the
-// implementer runs with write access to the whole workspace (including .ai/), so an
-// approval it could write itself would be worthless. Default location ~/.subrev/,
-// overridable with SUBREV_STATE_DIR.
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+// Audit log of human gate approvals. It is WRITE-ONLY on purpose: nothing in subrev reads it
+// to decide anything. The gate runs code the implementer wrote (tests, app code, npm scripts)
+// as the same OS user and outside any sandbox, so any file on disk — inside the repo or in the
+// home directory — can be written by untrusted code. A decision that read this file could be
+// forged (reproduced in tests/integrity/forgery.test.ts). The only trusted approval is the
+// fingerprint the human passes on the command line of the run that uses it
+// (`subrev resume <task> --approve-gate <fp>`), held in memory for that process.
+import { appendFileSync, mkdirSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-interface ApprovalEntry {
-  fingerprint: string
-  approvedAt: string
-  approvedBy: string
+export function gateStateDir(): string {
+  return process.env.SUBREV_STATE_DIR ?? path.join(os.homedir(), '.subrev')
 }
 
-type ApprovalStore = Record<string, ApprovalEntry[]>
-
-function storeFile(): string {
-  const dir = process.env.SUBREV_STATE_DIR ?? path.join(os.homedir(), '.subrev')
-  return path.join(dir, 'gate-approvals.json')
-}
-
-function key(repoPath: string, taskId: string): string {
-  return `${realpathSync(repoPath)}::${taskId}`
-}
-
-function load(): ApprovalStore {
-  const file = storeFile()
-  if (!existsSync(file)) return {}
+export function appendGateApprovalAudit(repoPath: string, taskId: string, fingerprint: string, files: string[]): void {
   try {
-    return JSON.parse(readFileSync(file, 'utf8')) as ApprovalStore
+    const dir = gateStateDir()
+    mkdirSync(dir, { recursive: true })
+    const line = { at: new Date().toISOString(), repo: repoPath, taskId, fingerprint, files, by: os.userInfo().username }
+    appendFileSync(path.join(dir, 'gate-approvals.log'), JSON.stringify(line) + '\n', 'utf8')
   } catch {
-    // A corrupt store approves nothing.
-    return {}
+    // An audit write failing must not block the run; the decision-log entry still records it.
   }
-}
-
-export function isGateChangeApproved(repoPath: string, taskId: string, fingerprint: string): boolean {
-  return (load()[key(repoPath, taskId)] ?? []).some((e) => e.fingerprint === fingerprint)
-}
-
-export function recordGateApproval(repoPath: string, taskId: string, fingerprint: string): void {
-  const store = load()
-  const k = key(repoPath, taskId)
-  const entries = store[k] ?? []
-  if (!entries.some((e) => e.fingerprint === fingerprint)) {
-    entries.push({ fingerprint, approvedAt: new Date().toISOString(), approvedBy: os.userInfo().username })
-  }
-  store[k] = entries
-  const file = storeFile()
-  mkdirSync(path.dirname(file), { recursive: true })
-  writeFileSync(file, JSON.stringify(store, null, 2) + '\n', 'utf8')
 }

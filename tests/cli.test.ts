@@ -13,7 +13,7 @@ describe('cli', () => {
     expect(names.sort()).toEqual(
         [
         'new', 'plan', 'approve', 'run', 'resume', 'amend-plan',
-        'status', 'close', 'abandon', 'retro', 'doctor', 'check-fast-lane', 'eval', 'usage', 'approve-gate',
+        'status', 'close', 'abandon', 'retro', 'doctor', 'check-fast-lane', 'eval', 'usage', 'show-gate',
       ].sort()
     )
   })

@@ -3,6 +3,7 @@ import type { AiRunner } from '../aiRunner.js'
 import { readTaskMeta, writeTaskMeta } from '../taskStore.js'
 import { isWorkingTreeDirty, currentBranch, createTaskBranch, checkoutBranch } from '../git.js'
 import { runTask, type RunOptions } from '../orchestrator/runTask.js'
+import { confirmGateApproval } from './approveGate.js'
 
 const DEFAULT_OPTIONS = {
   maxMechanicalRetries: 2,
@@ -17,7 +18,10 @@ function requireBaseBranch(taskId: string, baseBranch: string | undefined): stri
   return baseBranch
 }
 
-export type RunOverrides = Pick<RunOptions, 'scopeCheck' | 'layer2'>
+export type RunOverrides = Pick<RunOptions, 'scopeCheck' | 'layer2'> & {
+  /** Fingerprint typed by the human (`--approve-gate`); verified against the disk before anything runs. */
+  approveGate?: string
+}
 
 export async function runCommand(
   ai: AiRunner,
@@ -54,7 +58,14 @@ export async function runCommand(
   }
 
   const refreshed = readTaskMeta(repoPath, taskId)
-  const options: RunOptions = { ...DEFAULT_OPTIONS, ...overrides, baseBranch: requireBaseBranch(taskId, refreshed.baseBranch) }
+  const { approveGate, ...runOverrides } = overrides
+  const approvedGateFingerprint = approveGate ? confirmGateApproval(repoPath, taskId, approveGate) : undefined
+  const options: RunOptions = {
+    ...DEFAULT_OPTIONS,
+    ...runOverrides,
+    baseBranch: requireBaseBranch(taskId, refreshed.baseBranch),
+    approvedGateFingerprint,
+  }
   return runTask(ai, repoPath, taskId, options)
 }
 

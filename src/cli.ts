@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { Command } from 'commander'
 import { createUsageLogger, summarizeUsage, formatUsageSummary } from './usageLog.js'
-import { approveGate } from './commands/approveGate.js'
+import { showGate } from './commands/approveGate.js'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { readFileSync, realpathSync } from 'node:fs'
@@ -40,12 +40,13 @@ export function loadModelTiers(repoPath: string): ModelTiers {
   }
 }
 
-export function parseRunOverrides(opts: { scopeCheck?: string; revert?: boolean; strictUnverified?: boolean }): RunOverrides {
+export function parseRunOverrides(opts: { scopeCheck?: string; revert?: boolean; strictUnverified?: boolean; approveGate?: string }): RunOverrides {
   const mode = opts.scopeCheck ?? 'layer1'
   if (mode !== 'layer1' && mode !== 'layered') throw new Error(`--scope-check must be layer1 or layered, got "${mode}"`)
   return {
     scopeCheck: mode,
     layer2: { ablation: opts.revert !== false, strictUnverified: Boolean(opts.strictUnverified) },
+    ...(opts.approveGate ? { approveGate: opts.approveGate } : {}),
   }
 }
 
@@ -77,7 +78,8 @@ export function buildProgram(): Command {
       .option('--scope-check <mode>', 'layer1 (any layer-1 signal forces a review) or layered (layer 2 decides)', process.env.SUBREV_SCOPE_CHECK ?? 'layer1')
       .option('--no-revert', 'layered mode: skip the revert experiment (no extra gate runs)')
       .option('--strict-unverified', 'layered mode: escalate AC mappings that no test needs')
-      .action(async (taskId: string, opts: { scopeCheck: string; revert: boolean; strictUnverified?: boolean }) => {
+      .option('--approve-gate <fingerprint>', 'approve exactly this gate change, for this run only (see subrev show-gate)')
+      .action(async (taskId: string, opts: { scopeCheck: string; revert: boolean; strictUnverified?: boolean; approveGate?: string }) => {
         const repoPath = process.cwd()
         const ai = createSubprocessAiRunner(loadModelTiers(repoPath), undefined, createUsageLogger(repoPath, taskId))
         const status = await fn(ai, repoPath, taskId, parseRunOverrides(opts))
@@ -93,13 +95,10 @@ export function buildProgram(): Command {
   })
 
   program
-    .command('approve-gate <taskId>')
-    .description('show a blocked gate change; with --fingerprint, approve exactly that change')
-    .option('--fingerprint <fp>', 'the fingerprint printed for the change you checked')
-    .action((taskId: string, opts: { fingerprint?: string }) => {
-      const result = approveGate(process.cwd(), taskId, opts.fingerprint)
-      console.log(result.report)
-      if (result.recorded) console.log(`Approved gate change ${result.fingerprint}. Run "subrev resume ${taskId}".`)
+    .command('show-gate <taskId>')
+    .description('show a gate change recomputed from git; approve it with "subrev resume <taskId> --approve-gate <fp>"')
+    .action((taskId: string) => {
+      console.log(showGate(process.cwd(), taskId).report)
     })
 
   program

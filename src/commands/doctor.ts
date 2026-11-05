@@ -1,8 +1,9 @@
 import { execFileSync } from 'node:child_process'
-import { accessSync, constants, existsSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { accessSync, constants, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadProjectsConfig, resolveRepoFromCwd } from '../config.js'
+import { gateStateDir } from '../integrity/gateApproval.js'
 
 export interface DoctorCheck {
   name: string
@@ -73,6 +74,46 @@ function codexWorkspaceWriteProbe(repoPath: string): DoctorCheck {
   } finally {
     rmSync(probe, { force: true })
   }
+}
+
+/**
+ * The other half of the sandbox question: codex must NOT be able to write outside its workspace.
+ * Probes .git (subrev owns commits) and subrev's state dir in the home directory, with the same
+ * invocation as the workspace-write probe. A probe file that appears means the sandbox is not
+ * confining codex, and every guarantee that assumes it (.git, the approval audit log) is void.
+ */
+function codexSandboxConfinementProbe(repoPath: string): DoctorCheck {
+  const name = 'codex sandbox confines writes'
+  const stateDir = gateStateDir()
+  const targets = [path.join(repoPath, '.git', '.subrev-confinement-probe'), path.join(stateDir, '.subrev-confinement-probe')]
+  const escaped: string[] = []
+  try {
+    mkdirSync(stateDir, { recursive: true })
+    for (const target of targets) {
+      rmSync(target, { force: true })
+      try {
+        execFileSync('codex', ['sandbox', '-c', 'sandbox_mode="workspace-write"', 'touch', target], {
+          encoding: 'utf8',
+          cwd: repoPath,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        })
+      } catch (error) {
+        // A denied write makes `touch` (and so codex sandbox) fail: that is the expected outcome.
+        // Not being able to start codex at all is not.
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+          return { name, ok: false, detail: 'could not run codex to probe the sandbox' }
+        }
+      }
+      if (existsSync(target)) escaped.push(target)
+      rmSync(target, { force: true })
+    }
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error)
+    return { name, ok: false, detail: `probe failed: ${reason}` }
+  }
+  return escaped.length
+    ? { name, ok: false, detail: `codex sandbox could write outside the workspace: ${escaped.join(', ')}` }
+    : { name, ok: true, detail: `writes to .git and ${stateDir} were denied` }
 }
 
 function gitWritableCheck(repoPath: string): DoctorCheck {
@@ -207,6 +248,7 @@ export function runDoctor(cwd: string, configPath?: string, opts?: { toolRoot?: 
   checks.push(nodeVersionCheck())
   checks.push(distFreshnessCheck(opts?.toolRoot ?? defaultToolRoot()))
   checks.push(codexWorkspaceWriteProbe(repoPath))
+  checks.push(codexSandboxConfinementProbe(repoPath))
 
   return { checks, ok: checks.every((check) => check.ok) }
 }

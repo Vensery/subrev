@@ -36,7 +36,7 @@ function taskNotes(t: TaskMeta): string {
   if (t.unreviewedFixRound !== undefined) notes.push(`fix after FAILED round ${t.unreviewedFixRound} not re-reviewed`)
   if (t.fixCount) notes.push(`${t.fixCount} fix(es), see judgment-brief.md`)
   if (t.testIntegrityFlags) notes.push(`tests possibly weakened in ${t.testIntegrityFlags} window(s)`)
-  if (t.status === 'escalated-gate-change') notes.push('gate changed; see gate-change-report.md, then subrev approve-gate')
+  if (t.status === 'escalated-gate-change') notes.push('gate changed; subrev show-gate, then resume --approve-gate <fp>')
   if (t.auditResult && t.auditResult !== 'consistent') notes.push(`report audit: ${t.auditResult}`)
   return notes.length ? ` ⚠ ${notes.join('; ')}` : ''
 }

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync, chmodSync, existsSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -8,8 +8,18 @@ import { createTempGitRepo, commitAll, writeExecutableScript } from '../helpers/
 let oldPath = process.env.PATH ?? ''
 const cleanups: Array<() => void> = []
 
+const oldStateDir = process.env.SUBREV_STATE_DIR
+
+beforeEach(() => {
+  const stateDir = mkdtempSync(path.join(os.tmpdir(), 'subrev-doctor-state-'))
+  process.env.SUBREV_STATE_DIR = stateDir
+  cleanups.push(() => rmSync(stateDir, { recursive: true, force: true }))
+})
+
 afterEach(() => {
   process.env.PATH = oldPath
+  if (oldStateDir === undefined) delete process.env.SUBREV_STATE_DIR
+  else process.env.SUBREV_STATE_DIR = oldStateDir
   while (cleanups.length) cleanups.pop()?.()
 })
 
@@ -28,7 +38,8 @@ function codexShim(): string {
   return [
     'if [[ "$1" == "--version" ]]; then echo "codex 1.2.3"; exit 0; fi',
     'if [[ "$1" == "exec" && "$2" == "--help" ]]; then echo "workspace-write"; exit 0; fi',
-    'if [[ "$1" == "sandbox" && "$2" == "-c" ]]; then touch "${@: -1}"; exit 0; fi',
+    // Emulates workspace-write: writable inside cwd, except .git; denied everywhere else.
+    'if [[ "$1" == "sandbox" && "$2" == "-c" ]]; then t="${@: -1}"; case "$t" in "$PWD"/.git/*) echo "Operation not permitted" >&2; exit 1;; "$PWD"/*) touch "$t"; exit 0;; *) echo "Operation not permitted" >&2; exit 1;; esac; fi',
     'exit 0',
   ].join('\n')
 }
@@ -63,7 +74,7 @@ describe('runDoctor', () => {
     writeExecutableScript(repoPath, 'test.sh', 'exit 0')
 
     const report = runDoctor(repoPath, configPath, { toolRoot: path.join(repoPath, 'tools', 'subrev') })
-    expect(report.checks).toHaveLength(10)
+    expect(report.checks).toHaveLength(11)
     expect(report.ok).toBe(true)
     expect(report.checks.map((check) => check.name)).toEqual([
       'codex binary',
@@ -76,6 +87,7 @@ describe('runDoctor', () => {
       'Node.js major version',
       'dist freshness',
       'codex workspace-write probe',
+      'codex sandbox confines writes',
     ])
     expect(report.checks.find((check) => check.name === 'codex binary')?.detail).toContain('codex 1.2.3')
     expect(report.checks.find((check) => check.name === 'claude binary')?.detail).toContain('claude 9.9.9')
@@ -169,5 +181,21 @@ describe('runDoctor', () => {
     const report = runDoctor(repoPath, configPath)
     expect(report.checks.find((check) => check.name === '.git writable')?.ok).toBe(true)
     expect(existsSync(probe)).toBe(false)
+  })
+
+  it('fails the confinement check when codex can write outside its workspace', () => {
+    const { repoPath } = prepareRepo()
+    const binDir = fakeBinaryDir()
+    // A codex that is not sandboxed at all (e.g. danger-full-access in ~/.codex/config.toml).
+    writeFakeBinary(binDir, 'codex', 'if [[ "$1" == "sandbox" ]]; then touch "${@: -1}"; exit 0; fi\nexit 0')
+    writeFakeBinary(binDir, 'claude', 'echo "claude 9.9.9"')
+    process.env.PATH = `${binDir}:${oldPath}`
+
+    const report = runDoctor(repoPath)
+    const check = report.checks.find((c) => c.name === 'codex sandbox confines writes')!
+    expect(check.ok).toBe(false)
+    expect(check.detail).toContain('.git/.subrev-confinement-probe')
+    expect(check.detail).toContain(process.env.SUBREV_STATE_DIR!)
+    expect(existsSync(path.join(repoPath, '.git', '.subrev-confinement-probe'))).toBe(false)
   })
 })

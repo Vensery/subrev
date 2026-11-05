@@ -1,41 +1,48 @@
 // tools/subrev/src/commands/approveGate.ts
 //
-// A human accepts one specific gate change. Without --fingerprint it only shows the change,
-// recomputed from git and the working tree (never read back from .ai/, which the implementer
-// can write). With --fingerprint it records the approval, and only if the fingerprint still
-// matches what is on disk now.
-import { execFileSync } from 'node:child_process'
+// Inspecting and approving a gate change. `subrev show-gate <task>` shows the change,
+// recomputed from git and the working tree (never read back from .ai/). Approval is not stored:
+// the human passes the fingerprint to `subrev resume <task> --approve-gate <fp>`, it is checked
+// against the disk at start and held in memory for that run only.
 import { appendFileSync } from 'node:fs'
 import path from 'node:path'
+import { execFileSync } from 'node:child_process'
 import { readTaskMeta, readTaskFile, taskDir } from '../taskStore.js'
-import { checkGateIntegrity, renderGateReport } from '../integrity/gateIntegrity.js'
-import { isGateChangeApproved, recordGateApproval } from '../integrity/gateApproval.js'
+import { checkGateIntegrity, renderGateReport, type GateIntegrityResult } from '../integrity/gateIntegrity.js'
+import { appendGateApprovalAudit } from '../integrity/gateApproval.js'
 import { extractPlanFiles } from '../orchestrator/planFiles.js'
 
-export interface ApproveGateResult {
-  report: string
-  fingerprint: string | null
-  recorded: boolean
-}
-
-export function approveGate(repoPath: string, taskId: string, fingerprint?: string): ApproveGateResult {
+function currentGateChange(repoPath: string, taskId: string): GateIntegrityResult {
   const meta = readTaskMeta(repoPath, taskId)
   if (!meta.baseBranch) throw new Error(`Task ${taskId} has no baseBranch.`)
   const base = execFileSync('git', ['merge-base', meta.baseBranch, 'HEAD'], { cwd: repoPath, encoding: 'utf8' }).trim()
-  const result = checkGateIntegrity(repoPath, base)
+  return checkGateIntegrity(repoPath, base)
+}
+
+export function showGate(repoPath: string, taskId: string): { report: string; fingerprint: string | null } {
+  const result = currentGateChange(repoPath, taskId)
+  if (!result.fingerprint) return { report: 'The gate matches the base commit; nothing to approve.', fingerprint: null }
   const planFiles = extractPlanFiles(readTaskFile(repoPath, taskId, 'plan-approved.md') ?? '')
-  if (!result.fingerprint) return { report: 'The gate matches the base commit; nothing to approve.', fingerprint: null, recorded: false }
-  const report = renderGateReport(taskId, result, planFiles)
-  if (!fingerprint) return { report, fingerprint: result.fingerprint, recorded: false }
+  return { report: renderGateReport(taskId, result, planFiles), fingerprint: result.fingerprint }
+}
+
+/**
+ * Check a fingerprint the human typed against the gate change on disk right now. Returns it for
+ * the run to hold in memory; records an audit entry that nothing ever reads back.
+ */
+export function confirmGateApproval(repoPath: string, taskId: string, fingerprint: string): string {
+  const result = currentGateChange(repoPath, taskId)
+  if (!result.fingerprint) throw new Error(`--approve-gate ${fingerprint}: the gate matches the base commit; there is nothing to approve.`)
   if (fingerprint !== result.fingerprint) {
     throw new Error(
-      `Fingerprint ${fingerprint} does not match the gate change on disk now (${result.fingerprint}). Re-run "subrev approve-gate ${taskId}" and review the current diff.`
+      `--approve-gate ${fingerprint} does not match the gate change on disk now (${result.fingerprint}). Run "subrev show-gate ${taskId}" and review the current diff.`
     )
   }
-  if (!isGateChangeApproved(repoPath, taskId, fingerprint)) recordGateApproval(repoPath, taskId, fingerprint)
+  const files = result.changes.map((c) => c.path)
+  appendGateApprovalAudit(repoPath, taskId, fingerprint, files)
   appendFileSync(
     path.join(taskDir(repoPath, taskId), 'decision-log.md'),
-    `\n- ${new Date().toISOString()}: human approved gate change ${fingerprint} (${result.changes.map((c) => c.path).join(', ')}).\n`
+    `\n- ${new Date().toISOString()}: human approved gate change ${fingerprint} (${files.join(', ')}) for this run.\n`
   )
-  return { report, fingerprint, recorded: true }
+  return fingerprint
 }

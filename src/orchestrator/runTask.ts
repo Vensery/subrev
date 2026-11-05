@@ -45,6 +45,8 @@ export interface RunOptions {
    *   eval ablation to measure what the extra review costs and catches.
    */
   fixReview?: 'non-test' | 'scope-only'
+  /** Gate change the human approved on this run's command line (see commands/approveGate.ts). */
+  approvedGateFingerprint?: string
 }
 
 export function reviewFileForRound(round: number): string {
@@ -62,7 +64,10 @@ function finishAwaitingJudgment(repoPath: string, taskId: string, unreviewedFixR
 }
 
 export async function runTask(ai: AiRunner, repoPath: string, taskId: string, opts: RunOptions): Promise<TaskStatus> {
-  const implemented = await implementAndGate(ai, repoPath, taskId, { maxMechanicalRetries: opts.maxMechanicalRetries })
+  const implemented = await implementAndGate(ai, repoPath, taskId, {
+    maxMechanicalRetries: opts.maxMechanicalRetries,
+    approvedGateFingerprint: opts.approvedGateFingerprint,
+  })
   if (implemented.deviationRequested) return 'escalated-plan-deviation'
   if (implemented.gateBlocked) return 'escalated-gate-change'
 
@@ -119,6 +124,7 @@ export async function runTask(ai: AiRunner, repoPath: string, taskId: string, op
       maxMechanicalRetries: opts.maxMechanicalRetries,
       isFix: true,
       review: reviewText,
+      approvedGateFingerprint: opts.approvedGateFingerprint,
     })
     if (fixed.deviationRequested) return 'escalated-plan-deviation'
     if (fixed.gateBlocked) return 'escalated-gate-change'
